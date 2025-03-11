@@ -26,7 +26,7 @@ Other fun things it did:
 * Attempt to continuously fake results by just generating synthetic data, even after expressely being told not to multiple times
 * Attempt to continuously leave 'TODO' style implementations in arbitrary areas - I guess it got lazy
 
-Here is a link to the original Claude chat showing my prompt/conversation with the model: https://claude.ai/share/6198248b-5d0c-4cea-ab1a-bb7bb316fb64
+Here is a link to the original Claude chat showing my prompt/conversation with the model: https://claude.ai/share/a8728708-4eab-4688-98b7-17d783927cdb
 
 Feel free to submit PRs/Issues and I can attempt to triage, but no promises.
 
