@@ -266,6 +266,7 @@ namespace RawNtfsAccessSample
         
         static void CopyUSNJournalJ(RawNtfsAccessor accessor)
         {
+            // This works, just slow right now because we are doing naive parsing - TODO implement faster large-sparse parsing - skip right to data runs
             try
             {
                 // Windows registry file (usually locked while system is running)

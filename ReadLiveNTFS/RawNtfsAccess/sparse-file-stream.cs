@@ -13,6 +13,7 @@ namespace RawNtfsAccess.IO
     /// </summary>
     internal class SparseFileStream : Stream
     {
+        // TODO - Need to adjust this so it reads the data in appropriate sized chunks based on cluster size I guess
         private readonly NtfsFileSystem _ntfsFileSystem;
         private readonly string _filePath;
         private readonly long _length;

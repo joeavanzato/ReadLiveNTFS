@@ -20,7 +20,12 @@ I'm both impressed and horrified by how rapidly LLM coding is progressing.
 
 I did modify some items in Program.cs to perform more readable testing - but Claude could have done that too if I asked I'm sure.
 
-I also did some fixes for writing to ADS in ntfs-file-reader.cs because the LLM seemed to struggle with 'working' code from StackOverflow that didn't actually work.
+I spent some time fixing code in areas focusing on reading Alternate Data Streams, parsing Sparse files and handling links as the LLM kept trying to use code that it thought 'worked' but clearly didn't.
+
+Other fun things it did:
+* Attempt to reflectively find appropriate methods/objects/attributes in DiscUtils when it couldn't analyze them well enough to find a solution
+* Attempt to continuously fake results by just generating synthetic data, even after expressely being told not to multiple times
+* Attempt to continuously leave 'TODO' style implementations in arbitrary areas - I guess it got lazy
 
 Here is a link to the original Claude chat showing my prompt/conversation with the model: https://claude.ai/share/6198248b-5d0c-4cea-ab1a-bb7bb316fb64
 
