@@ -38,6 +38,13 @@ A sample program ('LiveCopy') is compiled and attached to this as a release exam
 
 Please be aware, this is not perfect and likely will have issues.  I left in a lot of code that was clearly broken just to show the LLM train of thought - I will probably continue to clean it up some.
 
+Most of the heavy lifting is done through:
+
+* https://github.com/DiscUtils
+* https://github.com/LordMike/RawDiskLib
+
+Awesome work by Michael Bisbjerg (LordMike) and everyone else contributing to NTFS/File System information on the Internet.
+
 ---
 
 ## Features
