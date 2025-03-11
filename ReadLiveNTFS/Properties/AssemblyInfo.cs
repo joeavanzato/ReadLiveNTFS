@@ -5,9 +5,9 @@ using System.Runtime.InteropServices;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 [assembly: AssemblyTitle("ReadLiveNTFS")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyDescription("Copy bytes from live Windows NTFS drives based on file/directory path, supports parsing of Junctions/Symbolic Links, Alternate Data Streams, System Files, etc.")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
+[assembly: AssemblyCompany("N/A")]
 [assembly: AssemblyProduct("ReadLiveNTFS")]
 [assembly: AssemblyCopyright("Copyright ©  2025")]
 [assembly: AssemblyTrademark("")]
