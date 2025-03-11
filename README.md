@@ -67,7 +67,7 @@ Awesome work by Michael Bisbjerg (LordMike) and everyone else contributing to NT
 Install the package via NuGet:
 
 ```
-Install-Package RawNtfsAccess
+dotnet add package ReadLiveNTFS.csproj --version 1.0.2
 ```
 
 ## Usage Examples
