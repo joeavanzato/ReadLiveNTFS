@@ -33,7 +33,7 @@ namespace RawNtfsAccessSample
                 using (var ntfsAccessor = new RawNtfsAccessor(systemDrive, options))
                 {
                     // Example 1: Copy a locked system file
-                    Console.WriteLine("\nExample 1: Copy a locked system file");
+                    Console.WriteLine("\nExample 1: Copy a locked system file (SOFTWARE)");
                     CopyLockedSystemFile(ntfsAccessor);
                     Console.WriteLine("####");
 
@@ -51,14 +51,9 @@ namespace RawNtfsAccessSample
                     Console.WriteLine("\nExample 4: Handle symbolic links and junctions");
                     HandleSymbolicLinks(ntfsAccessor);
                     Console.WriteLine("####");
-                    
-                    // Example 5: Hardlinked Executable
-                    Console.WriteLine("\nExample 5: Hardlinked Executable");
-                    CheckHardLink(ntfsAccessor);
-                    Console.WriteLine("####");
-                    
-                    // Example 6: Copy $UsnJrnl:$J
-                    Console.WriteLine("\nExample 6: $UsnJrnl:$J Extraction");
+
+                    // Example 5: Copy $UsnJrnl:$J
+                    Console.WriteLine("\nExample 5: $UsnJrnl:$J Extraction");
                     CopyUSNJournalJ(ntfsAccessor);
                     Console.WriteLine("####");
                 }
@@ -249,21 +244,6 @@ namespace RawNtfsAccessSample
             }
         }
 
-        static void CheckHardLink(RawNtfsAccessor accessor)
-        {
-            string regedit = $"{accessor.DriveLetter}:\\Windows\\regedit.exe";
-            if (!accessor.FileExists(regedit))
-            {
-                Console.WriteLine($"{regedit} does not exist or is not accessible.");
-                return;
-            }
-            Console.WriteLine($"Analyzing link: {regedit}");
-            var fileInfo = accessor.GetFileInfo(regedit);
-            Console.WriteLine(fileInfo.FullPath);
-            Console.WriteLine($"Link target: {fileInfo.LinkTarget}");
-
-        }
-        
         static void CopyUSNJournalJ(RawNtfsAccessor accessor)
         {
             // This works, just slow right now because we are doing naive parsing - TODO implement faster large-sparse parsing - skip right to data runs
@@ -365,6 +345,32 @@ namespace RawNtfsAccessSample
                     {
                         Console.WriteLine($"  Error listing files: {ex.Message}");
                     }
+                    Console.WriteLine("\nDirs in the target directory:");
+                    try
+                    {
+                        int count = 0;
+                        foreach (var file in accessor.GetDirectories(resolvedPath))
+                        {
+                            count++;
+                            Console.WriteLine($"  {file.FullPath}");
+                            
+                            // Only show first 5 files
+                            if (count >= 5)
+                            {
+                                Console.WriteLine("  ... (more dirs)");
+                                break;
+                            }
+                        }
+
+                        if (count == 0)
+                        {
+                            Console.WriteLine("  (No dirs found)");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"  Error listing files: {ex.Message}");
+                    }
                 }
                 else
                 {
@@ -374,6 +380,7 @@ namespace RawNtfsAccessSample
             catch (Exception ex)
             {
                 Console.WriteLine($"Failed to handle symbolic links: {ex.Message}");
+                Console.WriteLine(ex.StackTrace);
             }
         }
 
