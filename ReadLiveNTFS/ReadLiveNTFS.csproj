@@ -68,6 +68,7 @@
         <Compile Include="RawNtfsAccess\models.cs" />
         <Compile Include="RawNtfsAccess\ntfs-directory-reader.cs" />
         <Compile Include="RawNtfsAccess\ntfs-file-reader.cs" />
+        <Compile Include="RawNtfsAccess\ntfs-utilities.cs" />
         <Compile Include="RawNtfsAccess\raw-disk-reader.cs" />
         <Compile Include="RawNtfsAccess\raw-ntfs-accessor.cs" />
         <Compile Include="RawNtfsAccess\sparse-file-stream.cs" />

@@ -4,7 +4,9 @@ using System.IO;
 using System.Text;
 using System.Linq;
 using System.Runtime.InteropServices;
+using DiscUtils;
 using DiscUtils.Ntfs;
+using NtfsUtilities;
 using RawNtfsAccess.Exceptions;
 using RawNtfsAccess.IO;
 using RawNtfsAccess.Models;
@@ -147,122 +149,180 @@ namespace RawNtfsAccess.Links
         /// <returns>The target path if successful; otherwise, null</returns>
         private string TryGetTargetWithDiscUtils(string filePath, bool isDirectory)
         {
-            try
+            char dl = _diskReader.DriveLetter.ToCharArray()[0];
+            var finalPath = _diskReader.NtfsFileSystem.ResolvePath(filePath, dl);
+            return finalPath;
+            /*var reparseAttr = _diskReader.NtfsFileSystem.GetReparsePoint(filePath);
+            if (reparseAttr != null && DiscUtils.Ntfs.AttributeType.ReparsePoint.Equals(reparseAttr.Tag))
             {
-                var ntfsFs = _diskReader.NtfsFileSystem;
-                
-                // DiscUtils.Ntfs has a ReparsePoints property on FileSystemInfo 
-                // objects in newer versions
-                if (isDirectory)
+                // Cast the reparse data to the expected symbolic link buffer.
+                var symLinkBuffer = (DiscUtils.Ntfs.AttributeType.SymbolicLinkReparseBuffer)reparseAttr.Buffer;
+                string targetPath = symLinkBuffer.SubstituteName;
+    
+                // targetPath now holds the target of the symbolic link.
+            }
+
+            if (reparseAttr != null && reparseAttr.Tag == 0xA0000003)
+            {
+                // It’s likely a mount point (junction).
+                var mountPointBuffer = (MountPointReparseBuffer)reparseAttr.Buffer;
+                string targetPath = mountPointBuffer.SubstituteName;
+    
+                // targetPath holds the resolved target.
+            }*/
+            
+            // Generate (mostly) by ChatGPT
+            /*HashSet<string> visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string currentPath = filePath;
+            while (true)
+            {
+                var entry = _diskReader.NtfsFileSystem.GetDirectoryInfo(filePath);
+                if (entry == null)
                 {
-                    var dirInfo = ntfsFs.GetDirectoryInfo(filePath);
-                    
-                    // Try to access the reparse target through reflection
-                    // In newer versions, DirectoryInfo may have a method to get the target
-                    try
+                    // If the entry is not found, break (maybe the path is invalid or on a different FS).
+                    return filePath;
+                }
+                // Check if this entry is a reparse point (indicating a symbolic link or junction in NTFS).
+                if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    // The file/directory has a reparse point attribute. Read the reparse data to find the target it points to.
+                    DiscFileInfo file = _diskReader.NtfsFileSystem.GetFileInfo(currentPath);
+                    NtfsStream reparseAttrStream = file.GetStream(AttributeType.ReparsePoint, null);
+                    if (reparseAttrStream == null)
                     {
-                        if (dirInfo.Exists && (dirInfo.Attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint)
+                        // No reparse data found even though flag is set (unexpected) - break out.
+                        break;
+                    }
+                    byte[] reparseData = new byte[reparseAttrStream.ContentLength];
+                    using (Stream s = reparseAttrStream.Open(FileAccess.Read))
+                    {
+                        s.Read(reparseData, 0, reparseData.Length);
+                    }
+                    // The reparse data buffer layout:
+                    // [4 bytes Tag] [2 bytes DataLength] [2 bytes Reserved] [reparse-specific data]
+                    uint tag = BitConverter.ToUInt32(reparseData, 0);
+                    // We handle two specific tags: symlink (0xA000000C) and junction (mount point, 0xA0000003).
+                    string targetPath = null;
+                    if (tag == 0xA000000C) // IO_REPARSE_TAG_SYMLINK
+                    {
+                        // Symbolic link reparse data structure (after the first 8 bytes):
+                        // [2 bytes SubstituteNameOffset] [2 bytes SubstituteNameLength]
+                        // [2 bytes PrintNameOffset] [2 bytes PrintNameLength]
+                        // [4 bytes Flags] (0 = absolute, 1 = relative)
+                        // [variable-length PathBuffer] containing Unicode strings for substitute and print names.
+                        ushort substituteNameOffset = BitConverter.ToUInt16(reparseData, 8);
+                        ushort substituteNameLength = BitConverter.ToUInt16(reparseData, 10);
+                        ushort printNameOffset = BitConverter.ToUInt16(reparseData, 12);
+                        ushort printNameLength = BitConverter.ToUInt16(reparseData, 14);
+                        uint symlinkFlags = BitConverter.ToUInt32(reparseData, 16);
+                        int pathBufferOffset = 20;
+                        string substituteName = System.Text.Encoding.Unicode.GetString(reparseData, pathBufferOffset + substituteNameOffset, substituteNameLength);
+                        string printName = System.Text.Encoding.Unicode.GetString(reparseData, pathBufferOffset + printNameOffset, printNameLength);
+                        // Prefer the print name for human-readable target if available, otherwise use the substitute name.
+                        string rawTarget = !string.IsNullOrEmpty(printName) ? printName : substituteName;
+                        if ((symlinkFlags & 0x1) != 0)
                         {
-                            // Some versions of DiscUtils have a GetReparsePoint() method
-                            var type = dirInfo.GetType();
-                            var method = type.GetMethod("GetReparsePoint") ?? 
-                                         type.GetMethod("GetReparsePointData") ??
-                                         type.GetMethod("GetReparseData");
-                                
-                            if (method != null)
+                            // Relative symlink: the target path is relative to the directory of the link.
+                            string linkDirectory = Path.GetDirectoryName(currentPath);
+                            if (string.IsNullOrEmpty(linkDirectory))
                             {
-                                var reparseData = method.Invoke(dirInfo, null);
-                                if (reparseData != null)
-                                {
-                                    // Try to extract the target path from the reparse data
-                                    // The exact property/method depends on the DiscUtils version
-                                    var reparseType = reparseData.GetType();
-                                    var targetProp = reparseType.GetProperty("Target") ?? 
-                                                     reparseType.GetProperty("TargetPath") ??
-                                                     reparseType.GetProperty("Path");
-                                    
-                                    if (targetProp != null)
-                                    {
-                                        var target = targetProp.GetValue(reparseData) as string;
-                                        if (!string.IsNullOrEmpty(target))
-                                        {
-                                            return CleanupReparseTarget(target);
-                                        }
-                                    }
-                                }
+                                // If the link is at root (rare for relative symlink), treat base as root.
+                                linkDirectory = currentPath;
                             }
+                            targetPath = Path.GetFullPath(Path.Combine(linkDirectory, rawTarget));
+                        }
+                        else
+                        {
+                            // Absolute symlink: target is an absolute path.
+                            targetPath = rawTarget;
                         }
                     }
-                    catch (Exception ex)
+                    else if (tag == 0xA0000003) // IO_REPARSE_TAG_MOUNT_POINT (junction)
                     {
-                        Console.WriteLine($"Reflection error accessing reparse point: {ex.Message}");
-                        // Continue to try other methods
+                        // Junction reparse data structure (after first 8 bytes, similar to symlink but no flags):
+                        // [2 bytes SubstituteNameOffset] [2 bytes SubstituteNameLength]
+                        // [2 bytes PrintNameOffset] [2 bytes PrintNameLength]
+                        // [variable-length PathBuffer] with Unicode strings for substitute and print names.
+                        ushort substituteNameOffset = BitConverter.ToUInt16(reparseData, 8);
+                        ushort substituteNameLength = BitConverter.ToUInt16(reparseData, 10);
+                        ushort printNameOffset = BitConverter.ToUInt16(reparseData, 12);
+                        ushort printNameLength = BitConverter.ToUInt16(reparseData, 14);
+                        int pathBufferOffset = 16;
+                        string substituteName = System.Text.Encoding.Unicode.GetString(reparseData, pathBufferOffset + substituteNameOffset, substituteNameLength);
+                        string printName = System.Text.Encoding.Unicode.GetString(reparseData, pathBufferOffset + printNameOffset, printNameLength);
+                        // Use print name if available, otherwise use substitute name.
+                        targetPath = !string.IsNullOrEmpty(printName) ? printName : substituteName;
                     }
-                }
-                else
-                {
-                    var fileInfo = ntfsFs.GetFileInfo(filePath);
-                    
-                    // Similar approach for files
-                    try
+                    else
                     {
-                        if (fileInfo.Exists && (fileInfo.Attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint)
+                        // A different type of reparse point (not handled here). Stop resolution.
+                        break;
+                    }
+
+                    if (string.IsNullOrEmpty(targetPath))
+                    {
+                        // Could not determine the target path for the reparse point.
+                        break;
+                    }
+                    // Clean up the target path from device prefixes if present (e.g., "\\?\").
+                    if (targetPath.StartsWith("\\\\?\\", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (targetPath.StartsWith("\\\\?\\UNC\\", StringComparison.OrdinalIgnoreCase))
                         {
-                            // Try the same reflection approach for files
-                            var type = fileInfo.GetType();
-                            var method = type.GetMethod("GetReparsePoint") ?? 
-                                         type.GetMethod("GetReparsePointData") ??
-                                         type.GetMethod("GetReparseData");
-                                
-                            if (method != null)
-                            {
-                                var reparseData = method.Invoke(fileInfo, null);
-                                if (reparseData != null)
-                                {
-                                    var reparseType = reparseData.GetType();
-                                    var targetProp = reparseType.GetProperty("Target") ?? 
-                                                     reparseType.GetProperty("TargetPath") ??
-                                                     reparseType.GetProperty("Path");
-                                    
-                                    if (targetProp != null)
-                                    {
-                                        var target = targetProp.GetValue(reparseData) as string;
-                                        if (!string.IsNullOrEmpty(target))
-                                        {
-                                            return CleanupReparseTarget(target);
-                                        }
-                                    }
-                                }
-                            }
+                            targetPath = "\\" + targetPath.Substring(8);
+                        }
+                        else
+                        {
+                            targetPath = targetPath.Substring(4);
                         }
                     }
-                    catch (Exception ex)
+                    // If target is a network path or on a different filesystem type, we will return it directly without further resolution.
+                    if (targetPath.StartsWith("\\\\"))
                     {
-                        Console.WriteLine($"Reflection error accessing reparse point: {ex.Message}");
-                        // Continue to try other methods
+                        return targetPath;
+                    }
+                    // Set up for the next iteration to resolve the target path.
+                    currentPath = targetPath;
+                    continue;
+                }
+
+                // Not a reparse point. Check if the file has multiple hard link names.
+                {
+                    DiscFileInfo file = _diskReader.NtfsFileSystem.GetFileInfo(entry.);
+                    // DiscUtils provides all names (including alternate 8.3 names and hard links) for the file.
+                    var allNames = file.FullName;
+                    if (allNames != null && allNames.Count > 1)
+                    {
+                        string preferredName = null;
+                        foreach (string name in allNames)
+                        {
+                            // Choose the first name that does not contain a tilde (which likely indicates it's not the short 8.3 name).
+                            if (!name.Contains("~"))
+                            {
+                                preferredName = name;
+                                break;
+                            }
+                        }
+                        if (preferredName == null)
+                        {
+                            // In case all names contain '~' (very unlikely unless the actual name has '~'), just use the first name.
+                            preferredName = allNames[0];
+                        }
+                        if (!string.Equals(preferredName, currentPath, StringComparison.OrdinalIgnoreCase))
+                        {
+                            // If the current path is not already the preferred name, switch to it and continue resolution from there.
+                            currentPath = preferredName;
+                            continue;
+                        }
                     }
                 }
-                
-                // In DiscUtils.Ntfs, the ReparsePoint class might be internal, so we need a different approach
-                // Try to open the file and examine its attributes directly
-                try
-                {
-                    // Get reparse point data directly from the file's attributes
-                    // This requires knowledge of the NTFS file structure
-                    // Since DiscUtils doesn't expose this directly in the public API,
-                    // we'll rely on the Windows API method instead for production code
-                }
-                catch
-                {
-                    // If this fails, return null to fall back to Windows API
-                }
-                
-                return null;
-            }
-            catch
-            {
-                return null;
-            }
+
+                // If we get here, the path is neither a reparse point (symlink/junction) nor an alternate hard link name needing resolution.
+                // We've resolved it to the final target.
+                break;
+            }*/
+
+            return filePath;
         }
 
         /// <summary>
@@ -524,7 +584,7 @@ namespace RawNtfsAccess.Links
                 
                 // Get the link target
                 var (linkType, target) = GetLinkTarget(path);
-                
+
                 // If not a link or no target, return the original path
                 if (linkType == LinkType.None || string.IsNullOrEmpty(target))
                 {
@@ -537,7 +597,7 @@ namespace RawNtfsAccess.Links
                 
                 if (!shouldFollow)
                 {
-                    return linkPath;
+                    return _diskReader.DriveLetter+":"+target;
                 }
                 
                 // For relative links, resolve relative to parent directory
@@ -546,7 +606,7 @@ namespace RawNtfsAccess.Links
                     string parentDir = Path.GetDirectoryName(path);
                     target = Path.GetFullPath(Path.Combine(parentDir ?? string.Empty, target));
                 }
-                
+
                 // Recursively resolve the target
                 return ResolveLink(target, options);
             }
